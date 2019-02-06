@@ -4,6 +4,7 @@
 tmp*
 *.bat
 *.nc
+*.spec
 
 __pycache__/
 *.py[cod]

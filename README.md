@@ -2,7 +2,7 @@
 Neutral File System (NEFIS) Processing using a pre-built NEFIS library in Cython
 
 This is a thin wrapper around a pre-built NEFIS Cython library which was provided by Deltares. This was made after
-several unsuccessful attempts at re-compiling the official openearch nefis-python package on github using Cython. The .dll and .pyd files
+several unsuccessful attempts at re-compiling the official OpenEarth nefis-python package on github using Cython. The .dll and .pyd files
 needed for this program are supplied in the releases tab.
 
 
