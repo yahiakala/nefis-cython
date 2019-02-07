@@ -5,9 +5,9 @@ Python 2.7 only.
 """
 
 from netCDF4 import Dataset
+from lib import nefis
 import numpy as np
 import struct
-import nefis
 import pdb  # noqa
 import sys
 
@@ -81,14 +81,23 @@ def get_data(fp, elm_name, grp_name):
 
     Parameters
     ----------
-    nt : list
+    fd : int
 
-        List of starting and ending index. 1-indexed.
+        File identifier.
+
+    elm_name : string
+
+        Name of element.
+
+    grp_name : string
+
+        Name of group.
+
+    Returns
+    -------
+    data : np.array
 
     """
-    # TODO add in a funtion that automatically
-    # determines which group a variable is in
-
     # Retrieve number of available timesteps
     error, ntimes = nefis.inqmxi(fp, grp_name)
     neferrcheck(error)
@@ -102,9 +111,7 @@ def get_data(fp, elm_name, grp_name):
     # Get rid of invalid dims.
     elm_dimensions = elm_dimensions[elm_dimensions > 0]
 
-    # print_elmstuff(elm_name, elm_type, elm_single_byte, elm_quantity,
-    #                elm_unit, elm_dimensions, elm_count)
-
+    usr_order = userorder()
     usr_index = np.zeros(15, dtype=np.int32).reshape(5, 3)
 
     usr_index[0, 0] = 1  # first timestep
@@ -113,34 +120,42 @@ def get_data(fp, elm_name, grp_name):
     np.ascontiguousarray(usr_index, dtype=np.int32)
 
     if ntimes > 1:
-        elm_dimensions = np.array(list(elm_dimensions) + [ntimes])
-    numnums = np.prod(elm_dimensions)
+        dims1 = np.array(list(elm_dimensions) + [ntimes])
+    else:
+        dims1 = elm_dimensions
 
-    numbytes = numnums * elm_single_byte
-
-    usr_order = userorder()
-
-    error, buffer_res = nefis.getelt(fp, grp_name, elm_name,
-                                     usr_index, usr_order, numbytes)
-
-    neferrcheck(error)
+    dims2 = dims1[::-1]
+    numnums = np.prod(dims1)
+    elm_tbytes = numnums * elm_single_byte
 
     if 'INT' in elm_type:
         fmt = "%di" % (numnums)
         # pdb.set_trace()
+    elif 'REAL' in elm_type:
+        if elm_single_byte == 4:
+            fmt = "%df" % (numnums)
+        else:
+            fmt = "%dd" % (numnums)  # format string for float/double return.
     else:
-        fmt = "%df" % (numnums)  # format string for float return.
+        fmt = "%ds" % (numnums)  # string
 
-    # Not sure why I need to reverse the dims
-    # Reverse dimensions (C vs Fortran ??)
-    dims2 = elm_dimensions[::-1]
+    if 'CHAR' in elm_type:
+        error, buffer_res = nefis.getels(fp, grp_name, elm_name,
+                                         usr_index, usr_order, elm_tbytes)
+        dats = [buffer_res[i:i + elm_single_byte].strip()
+                for i in range(0, len(buffer_res), elm_single_byte)]
+        dats = np.array(dats)
+    else:
+        error, buffer_res = nefis.getelt(fp, grp_name, elm_name,
+                                         usr_index, usr_order, elm_tbytes)
+        dats = np.asarray(struct.unpack(fmt, buffer_res)).reshape(dims2)
 
-    # Unpack data into numpy array.
-    numbers = np.asarray(struct.unpack(fmt, buffer_res)).reshape(dims2)
-    # numbers = np.squeeze(numbers)
+    # if elm_name == 'SIMDAT':
+    #     print_elmstuff(elm_name, elm_type, elm_single_byte, elm_quantity,
+    #                    elm_unit, elm_dimensions, elm_count)
+    #     pdb.set_trace()
 
-    # print(np.shape(numbers))
-    return numbers
+    return dats
 
 
 def getelem(fd, elm_name):
@@ -173,19 +188,18 @@ def getelems(fd, grp_name):
 
 def getalldata(fd):
     """Get all data in NEFIS file."""
-    t1, _ = getgroups(fd)
+    t1, nt = getgroups(fd)
     d1 = {}
 
     for i in t1:
         elems = getelems(fd, i)
         infos = {}
         for j in elems:
-
             elmdict = getelem(fd, j)
-            if 'CHAR' in elmdict['dtype']:
-                pass
-            else:
-                elmdict['data'] = get_data(fd, j, i)
+            elmdict['grpdim'] = nt[i]
+            print('Getting ' + j + ' from ' + i)
+            elmdict['data'] = get_data(fd, j, i)
+            print('Got ' + j + ' from ' + i)
             infos[j] = elmdict
         d1[i] = infos
     return d1
@@ -213,74 +227,57 @@ def getgroups(fd):
     return t1, nti
 
 
-def trim2nc(fname):
+def nefis2nc(fname):
     """Convert trim data to netCDF4 file."""
     fd = openfile(fname)
     d1 = getalldata(fd)
     gn, nti = getgroups(fd)
     closefile(fd)
 
+    # Get unique dimensions.
+    dd = []
+    for key1, val1 in d1.iteritems():
+        for key2, val2 in val1.iteritems():
+            dd += list(val2['dimensions']) + [val2['grpdim']]
+    dda = np.unique(np.array(dd))
+    dimnames = ['dim' + str(i + 1) for i in range(len(dda))]
+    dda_dict = {}
+    for i in range(len(dda)):
+        dda_dict[dda[i]] = dimnames[i]
+
     print('Note: You must specify the coordinate system later.')
     rootgrp = Dataset(fname[:-4] + '.nc', 'w', format='NETCDF4')
-    # Don't use groups right now.
 
-    # coord = d1['map-const']['COORDINATES']['data']
-    idate = d1['map-const']['ITDATE']['data']
-    tpoints = d1['map-info-series']['ITMAPC']['data']
+    # Create dimensions from unique dimensions.
+    dim_id = []
+    for i in range(len(dda)):
+        dim_id.append(rootgrp.createDimension(dimnames[i], dda[i]))
 
-    xz = d1['map-const']['XZ']
-    # yz = d1['map-const']['YZ']
-    # d1['map-const']['XCOR']
-    # d1['map-const']['YCOR']
+    # Create variables.
+    var_id, grp_id = [], []
+    for key1, val1 in d1.iteritems():
+        grp_id.append(rootgrp.createGroup(key1))
+        for key2, val2 in val1.iteritems():
+            # Get shape of data and corresponding dims.
+            newdims = list(np.shape(val2['data']))
+            dimnami = [dda_dict[i] for i in newdims]
+            if 'REAL' in val2['dtype']:
+                dtype = 'f4'
+            elif 'INT' in val2['dtype']:
+                dtype = 'i4'
+            else:
+                dtype = np.unicode_
+            print('Writing ' + val2['name'] + ' to netCDF')
+            var_id.append(grp_id[-1].createVariable(
+                val2['name'], dtype, tuple(dimnami)))
+            var_id[-1].description = val2['description']
+            var_id[-1].unit = val2['unit']
+            var_id[-1][:] = val2['data']
 
-    ms = rootgrp.createDimension('m', xz['dimensions'][0])  # noqa
-    ns = rootgrp.createDimension('n', xz['dimensions'][1])  # noqa
-    ts = rootgrp.createDimension('t', nti['map-series'])  # noqa
-
-    times = rootgrp.createVariable('tsecs', 'i4', ('t',))
-    times[:] = tpoints
-    times.description = 'Seconds from start of simulation'
-
-    rootgrp.itdate = str(idate[0]) + ' ' + str(idate[1])
-
-    # Only do the data blocks that have dimensions ms/ns within map-const
-    # and map-series. So only 2D output data.
-    varc, vars = [], []
-    for keys, vals in d1['map-const'].iteritems():
-        if (all(vals['dimensions'][:2] == xz['dimensions']) and
-                len(vals['dimensions']) == 2):
-            if 'data' in vals:
-                if 'REAL' in vals['dtype']:
-                    dty = 'f4'
-                elif 'INT' in vals['dtype']:
-                    dty = 'i4'
-                varc.append(rootgrp.createVariable(vals['name'], dty,
-                                                   ('n', 'm',)))
-                varc[-1].description = vals['description']
-                varc[-1].unit = vals['unit']
-                varc[-1][:] = vals['data']
-    for keys, vals in d1['map-series'].iteritems():
-        # print(keys)
-        # if keys == 'VICWW':
-        # print(vals['dimensions'])
-        # pdb.set_trace()
-        if (all(vals['dimensions'][:2] == xz['dimensions'])
-                and len(vals['dimensions']) == 2):
-            if 'data' in vals:
-                if 'REAL' in vals['dtype']:
-                    dty = 'f4'
-                elif 'INT' in vals['dtype']:
-                    dty = 'i4'
-                vars.append(rootgrp.createVariable(vals['name'], dty,
-                                                   ('t', 'n', 'm',)))
-                vars[-1].description = vals['description']
-                vars[-1].unit = vals['unit']
-                vars[-1][:] = vals['data']
     rootgrp.close()
 
 
 if __name__ == '__main__':
     funname = sys.argv[1]
     fname = sys.argv[2]
-    if 'trim2nc' in funname:
-        trim2nc(fname)
+    nefis2nc(fname)
