@@ -5,6 +5,12 @@ This is a thin wrapper around a pre-built NEFIS Cython library which was provide
 several unsuccessful attempts at re-compiling the official OpenEarth nefis-python package on github using Cython. The .dll and .pyd files
 needed for this program are supplied in the releases tab.
 
+## Installation
+Navigate to the repo folder and run this command in your (anaconda) prompt:
+~~~~
+pip install -e .
+~~~~
+
 
 ## Usage in Python script
 ```python
