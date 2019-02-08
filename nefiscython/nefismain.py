@@ -124,6 +124,10 @@ def get_data(fp, elm_name, grp_name):
     else:
         dims1 = elm_dimensions
 
+    if np.prod(dims1) >= sys.maxint or np.prod(dims1) < 0:
+        print('Data too large: skipping ' + elm_name)
+        return np.zeros(dims1[::-1])
+
     dims2 = dims1[::-1]
     numnums = np.prod(dims1)
     elm_tbytes = numnums * elm_single_byte
