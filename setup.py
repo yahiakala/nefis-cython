@@ -16,7 +16,7 @@ setup(
     description=("Python wrapper for Nefis Cython library"),
     license="LGPL",
     keywords="NEFIS",
-    packages=['nefiscython'],
+    packages=find_packages(),
     long_description=read('README.md'),
     classifiers=[
         "Natural Language :: English",

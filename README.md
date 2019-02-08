@@ -36,7 +36,7 @@ rem SET PATH TO PYTHON 2.7
 set py27=C:\Users\username\AppData\Local\Continuum\anaconda3\envs\py27
 
 rem SET PATH TO NEFISMAIN SCRIPT. THERE IS A COPY ON THE K NETWORK DRIVE.
-set nefispy=C:\Users\username\github\nefis-cython\nefismain.py
+set nefispy=C:\Users\username\github\nefis-cython\nefiscython\nefismain.py
 
 set PATH=%py27%;%PATH%
 
@@ -46,3 +46,7 @@ rem Run this batch file from the same directory as your input file.
 python.exe %nefispy% nefis2nc trim-f34.dat
 pause
 ~~~~
+
+
+## Notes
+* DLL not found errors might be resolved by obtaining msvcr110.dll

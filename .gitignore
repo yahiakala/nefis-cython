@@ -5,6 +5,7 @@ tmp*
 *.bat
 *.nc
 *.spec
+*.pyc
 
 __pycache__/
 *.py[cod]
